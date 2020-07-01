@@ -53,7 +53,7 @@ proc load_pdb_to_vmd {a_pdb_file} {
       mol color Name
       mol addrep top
       #
-      mol selection "noh and resid 75 37 88 48 21"
+      mol selection "noh and same residue as within 5 of name FE"
       mol representation Licorice 0.200000 12.000000 12.000000
       mol modmaterial 2 0 AOChalky
       mol color Name
@@ -188,10 +188,524 @@ proc read_DX {a_dx_file} {
    puts "Searching for energy minima..."
 }
 
-# -----------------------------------------------------------------------------
-# ---------------------------- BUSQUEDA DEL MINIMO ----------------------------
-# -----------------------------------------------------------------------------
- 
+## lremove - remove items from a list
+# OPTS:
+# -all remove all instances of each item
+# -glob remove all instances matching glob pattern
+# -regexp remove all instances matching regexp pattern
+# ARGS: l a list to remove items from
+# args items to remove (these are 'join'ed together)
+##
+proc lremove {args} {
+    array set opts {-all 0 pattern -exact}
+    while {[string match -* [lindex $args 0]]} {
+        switch -glob -- [lindex $args 0] {
+            -a* { set opts(-all) 1 }
+            -g* { set opts(pattern) -glob }
+            -r* { set opts(pattern) -regexp }
+            -- { set args [lreplace $args 0 0]; break }
+            default {return -code error "unknown option \"[lindex $args 0]\""}
+        }
+        set args [lreplace $args 0 0]
+    }
+    set l [lindex $args 0]
+    foreach i [join [lreplace $args 0 0]] {
+        if {[set ix [lsearch $opts(pattern) $l $i]] == -1} continue
+        set l [lreplace $l $ix $ix]
+        if {$opts(-all)} {
+            while {[set ix [lsearch $opts(pattern) $l $i]] != -1} {
+                set l [lreplace $l $ix $ix]
+            }
+        }
+    }
+    return $l
+}
+
+
+
+proc write_pruned_DX {p_dx_file path_pdb cutoff} {
+   # Writes a pruned ILS .dx grid file for better visualization. The pruning 
+   # is performed with a proximity criteria with the previously computed reaction 
+   # paths. All grid points within a cutoff radius of the reaction path points
+   # are asigned their original energy value. The rest get a very high energy value 
+   # (100.00 by default) so they are not visualized in VMD. This is intended to help
+   # with the visualization of complex pathway systems inside proteins. 
+
+   global grilla
+   global valList
+   global X
+   global Y
+   global Z
+   global xdelta
+   global ydelta
+   global zdelta
+   global xOrigen
+   global yOrigen
+   global zOrigen
+   
+   set outf [open $p_dx_file w]
+
+   # Reading Title
+   puts $outf "#"
+   puts $outf "#"
+
+   # Reading maximum grid indexes.
+   puts $outf  "object 1 class gridpositions counts $X $Y $Z"
+
+   # Reading origin of coordinates.
+   puts $outf  "origin $xOrigen $yOrigen $zOrigen"
+
+   # Reading deltas for each coordinate.
+   puts $outf  "delta $xdelta 0 0"
+   puts $outf  "delta 0 $ydelta 0"
+   puts $outf  "delta 0 0 $zdelta"
+   set xVec [list [expr $xdelta * $X] 0 0 ]
+   set yVec [list 0 [expr $ydelta * $Y] 0 ]
+   set zVec [list 0 0 [expr $zdelta * $Z] ]
+
+   # Reading inconsequential stuff.
+   puts $outf  "object 2 class gridconnections counts $X $Y $Z"
+   puts $outf  "object 3 class array double rank 0 items [expr $X*$Y*$Z]"
+
+   puts "CREATING PRUNED .DX FILE"
+
+   # Read PDB with reaction paths.
+   set pathf [open $path_pdb r]
+   set path_data [read $pathf]
+   close $pathf
+   set path_lines [ split $path_data "\n" ]
+   set path_lines [ lrange $path_lines 0 end-1 ]
+   set npoints [ llength $path_lines ]
+   foreach l $path_lines {
+      lappend path_x [ lindex $l 5 ] 
+      lappend path_y [ lindex $l 6 ] 
+      lappend path_z [ lindex $l 7 ] 
+   }
+   
+   # Now writing energy values.
+   set dbcnt 1
+   set cnt 1
+   set fmtdx "%11.5f%11.5f%11.5f"
+   set fmtdx2 "%11.5f%11.5f"
+   set fmtdx1 "%11.5f"
+   set gridline [ list ]
+   for {set i 0} {$i < $X} {incr i} {
+   for {set j 0} {$j < $Y} {incr j} {
+   for {set k 0} {$k < $Z} {incr k} {
+      # Compiling energies as a 3D array.
+      set grid_pos_x [get_position_from_index  $i $xdelta $xOrigen]
+      set grid_pos_y [get_position_from_index  $j $ydelta $yOrigen]
+      set grid_pos_z [get_position_from_index  $k $zdelta $zOrigen]
+      set is_near_min 0
+      for { set m 0 } { $m < $npoints } { incr m } {
+         set px [ lindex $path_x $m ]
+         set py [ lindex $path_y $m ]
+         set pz [ lindex $path_z $m ]
+         set dist [ distance $px $py $pz $grid_pos_x $grid_pos_y $grid_pos_z ]
+         if { $dist < $cutoff } {
+            lappend gridline $grilla($i,$j,$k) 
+            lappend full_list $grilla($i,$j,$k)
+            set dbcnt [expr $dbcnt + 1]
+            set is_near_min 1
+            break
+         }
+      }
+      if { $is_near_min == 0 } { 
+         lappend gridline 100.00 
+         lappend full_list 60.00
+         set dbcnt [expr $dbcnt + 1]
+      }
+#      puts "is_near_min = $is_near_min"
+#      if { [ expr { $cnt % 3 } ] == 0 } {
+#         set g0 [ lindex $gridline 0 ]
+#         set g1 [ lindex $gridline 1 ]
+#         set g2 [ lindex $gridline 2 ]
+#         puts $outf [ format $fmtdx $g0 $g1 $g2 ]
+#         set gridline [list ]
+#      }
+#      puts "Element Nº: $cnt"
+      set cnt [expr $cnt + 1]
+   }}}
+
+   # Now reading energy values.
+   set a 0;
+   set b 1;
+   set c 2;
+
+   set total [expr int($X* $Y * $Z / 3)]
+
+   set count 0
+   while {$count < $total} {
+      set g0 [ lindex $full_list $a ]
+      set g1 [ lindex $full_list $b ]
+      set g2 [ lindex $full_list $c ]
+      puts $outf [ format $fmtdx $g0 $g1 $g2 ]
+
+      set a [expr $a+3]
+      set b [expr $b+3]
+      set c [expr $c+3]
+#      puts "Line No: $count"
+      incr count
+   }
+   if {[expr $X * $Y * $Z - 3 * $total] == 2} {
+      set g0 [ lindex $full_list $a ]
+      set g1 [ lindex $full_list $b ]
+      puts $outf [ format $fmtdx2 $g0 $g1 ]
+   }
+   if {[expr $X * $Y * $Z - 3 * $total] == 1} {
+      set g0 [ lindex $full_list $a ]
+      puts $outf [ format $fmtdx1 $g0 $g1 ]
+   }
+   close $outf
+
+#   if { [ llength $gridline ] == 2 } { 
+#      set g0 [ lindex $gridline 0 ]
+#      set g1 [ lindex $gridline 1 ]
+#      puts $outf [ format $fmtdx2 $g0 $g1 ]
+#   } elseif { [ llength $gridline ] == 1 } {
+#      set g0 [ lindex $gridline 0 ]
+#      puts $outf [ format $fmtdx1 $g0 ]
+#   }
+
+   puts "Pruned 3D grid generated."
+   puts "dbcnt Nº: $dbcnt"
+   puts "Total elements in grid: [llength $full_list]"
+
+}
+
+
+
+proc read_occupation_volmap_DX {a_dx_file} {
+   # Reads ILS .dx grid file. 
+   # Ouputs 
+   #   * grilla(i,j,k) --> Array variable. Contains energy values as a 
+   #                       function of grid coordinates.
+   #   * varlist(i)    --> Array varible. Contains energy values as a 
+   #                       one-dimensional list.
+   #
+
+   global grilla
+   global valList
+   global X
+   global Y
+   global Z
+   global xdelta
+   global ydelta
+   global zdelta
+   global xOrigen
+   global yOrigen
+   global zOrigen
+   
+
+   set in [open $a_dx_file r]
+
+   # Reading Title
+   set InputLine [gets $in]
+#   set InputLine [gets $in]
+
+   # Reading maximum grid indexes.
+   set InputLine [gets $in]
+   scan $InputLine "object 1 class gridpositions counts %i %i %i" X Y Z
+
+   # Reading origin of coordinates.
+   set InputLine [gets $in]
+   scan $InputLine "origin %e %e %e" xOrigen yOrigen zOrigen
+   set origin [list $xOrigen $yOrigen $zOrigen ]
+
+   # Reading deltas for each coordinate.
+   set InputLine [gets $in]
+   scan $InputLine "delta %e %e %e" xdelta dum2 dum1
+   set InputLine [gets $in]
+   scan $InputLine "delta %e %e %e" dum1 ydelta dum2
+   set InputLine [gets $in]
+   scan $InputLine "delta %e %e %e" dum2 dum1 zdelta
+   set xVec [list [expr $xdelta * $X] 0 0 ]
+   set yVec [list 0 [expr $ydelta * $Y] 0 ]
+   set zVec [list 0 0 [expr $zdelta * $Z] ]
+
+   # Reading inconsequential stuff.
+   set InputLine [gets $in]
+   set InputLine [gets $in]
+   set total [expr int($X* $Y * $Z / 3)]
+
+   # Printing summary of .DX file prologue.
+   puts "Dimensions = x:$X y:$Y z:$Z"
+   puts "Origin: $xOrigen $yOrigen $zOrigen" 
+   puts "Resolution = x:$xdelta y:$ydelta z:$zdelta"
+   puts "Reading values..."
+
+   # Now reading energy values.
+   set a 0;
+   set b 1;
+   set c 2;
+
+   set count 0
+   set sumval 0.0
+   while {$count < $total} {
+      set InputLine [gets $in]
+      scan $InputLine "%e %e %e" v1 v2 v3
+      set valList($a) $v1
+      set valList($b) $v2
+      set valList($c) $v3
+      set a [expr $a+3]
+      set b [expr $b+3]
+      set c [expr $c+3]
+      set sumval [ expr { $sumval + $v1 + $v2 + $v3 } ]
+      incr count
+   }
+   if {[expr $X * $Y * $Z - 3 * $total] == 2} {
+      scan $InputLine "%e %e" v1 v2
+      set valList($a) $v1
+      set valList($b) $v2
+      set a [expr $a+3]
+      set b [expr $b+3]
+      set sumval [ expr { $sumval + $v1 + $v2 } ]
+   }
+   if {[expr $X * $Y * $Z - 3 * $total] == 1} {
+      scan $InputLine "%e"  v1
+      set valList($a) $v1
+      set sumval [ expr { $sumval + $v1 } ]
+      set a [expr $a+3]
+   }
+
+   puts "Loaded all energy values."
+   
+   set v 0
+   for {set i 0} {$i < $X} {incr i} {
+   for {set j 0} {$j < $Y} {incr j} {
+   for {set k 0} {$k < $Z} {incr k} {
+      # Compiling energies as a 3D array.
+      set deltaG [ expr {-log($valList($v)/$sumval) } ]
+      set grilla($i,$j,$k) $deltaG;
+      incr v;
+   } } }
+
+   puts "3D grid generated..."
+   puts "Searching for energy minima..."
+}
+
+
+proc write_DX {out_dx_file} {
+   # Writes a pruned ILS .dx grid file for better visualization. The pruning 
+   # is performed with a proximity criteria with the previously computed reaction 
+   # paths. All grid points within a cutoff radius of the reaction path points
+   # are asigned their original energy value. The rest get a very high energy value 
+   # (100.00 by default) so they are not visualized in VMD. This is intended to help
+   # with the visualization of complex pathway systems inside proteins. 
+
+   global grid
+   global nx
+   global ny
+   global nz
+   global deltax
+   global deltay
+   global deltaz
+   global originx
+   global originy
+   global originz
+   
+   set outf [open $out_dx_file w]
+
+   # Reading Title
+   puts $outf "#"
+   puts $outf "#"
+
+   # Reading maximum grid indexes.
+   puts $outf  "object 1 class gridpositions counts $nx $ny $nz"
+
+   # Reading origin of coordinates.
+   puts $outf  "origin $originx $originy $originz"
+
+   # Reading deltas for each coordinate.
+   puts $outf  "delta $deltax 0 0"
+   puts $outf  "delta 0 $deltay 0"
+   puts $outf  "delta 0 0 $deltaz"
+   set xVec [list [expr $deltax * $nx] 0 0 ]
+   set yVec [list 0 [expr $deltay * $ny] 0 ]
+   set zVec [list 0 0 [expr $deltaz * $nz] ]
+
+   # Reading inconsequential stuff.
+   puts $outf  "object 2 class gridconnections counts $nx $ny $nz"
+   puts $outf  "object 3 class array double rank 0 items [expr $nx*$ny*$nz]"
+
+   puts "CREATING PRUNED .DX FILE"
+
+   # Now writing energy values.
+   set dbcnt 1
+   set cnt 1
+   set fmtdx "%11.5f%11.5f%11.5f"
+   set fmtdx2 "%11.5f%11.5f"
+   set fmtdx1 "%11.5f"
+   set gridline [ list ]
+   for {set i 0} {$i < $nx} {incr i} {
+   for {set j 0} {$j < $ny} {incr j} {
+   for {set k 0} {$k < $nz} {incr k} {
+      # Compiling energies as a list.
+      lappend full_list $grid($i,$j,$k)
+      set cnt [expr $cnt + 1]
+   }}}
+
+   # Now reading energy values.
+   set a 0;
+   set b 1;
+   set c 2;
+
+   set total [expr int($nx* $ny * $nz / 3)]
+
+   set count 0
+   while {$count < $total} {
+      set g0 [ lindex $full_list $a ]
+      set g1 [ lindex $full_list $b ]
+      set g2 [ lindex $full_list $c ]
+      puts $outf [ format $fmtdx $g0 $g1 $g2 ]
+
+      set a [expr $a+3]
+      set b [expr $b+3]
+      set c [expr $c+3]
+      incr count
+   }
+   if {[expr $nx * $ny * $nz - 3 * $total] == 2} {
+      set g0 [ lindex $full_list $a ]
+      set g1 [ lindex $full_list $b ]
+      puts $outf [ format $fmtdx2 $g0 $g1 ]
+   }
+   if {[expr $nx * $ny * $nz - 3 * $total] == 1} {
+      set g0 [ lindex $full_list $a ]
+      puts $outf [ format $fmtdx1 $g0 $g1 ]
+   }
+   close $outf
+
+   puts "DX 3D grid generated."
+   puts "dbcnt Nº: $dbcnt"
+   puts "Total elements in grid: [llength $full_list]"
+
+}
+
+##########################################################################################
+##                  GAUSSIAN KERNEL REPRESENTATION ANALYSIS                             ##
+##########################################################################################
+proc GKRanalysis { pdbin dxout minmax delta sigma } {
+   global grid
+   global nx
+   global ny
+   global nz
+   global deltax
+   global deltay
+   global deltaz
+   global originx
+   global originy
+   global originz
+   
+   # PREPARING GRID
+   puts "DEFINING GRID PARAMETERS"
+   set deltax [lindex $delta 0]
+   set deltay [lindex $delta 1]
+   set deltaz [lindex $delta 2]
+
+   set minx [expr [ lindex $minmax 0 0 ] - $deltax ]
+   set miny [expr [ lindex $minmax 0 1 ] - $deltay ]
+   set minz [expr [ lindex $minmax 0 2 ] - $deltaz ]
+
+   set origin [ list $minx $miny $minz ]
+   set originx $minx
+   set originy $miny
+   set originz $minz
+
+   set maxx [ expr [lindex $minmax 1 0] + $deltax ]
+   set maxy [ expr [lindex $minmax 1 1] + $deltay ]
+   set maxz [ expr [lindex $minmax 1 2] + $deltaz ]
+
+   set nx [ expr int(ceil($maxx) - floor($minx)) ]
+   set ny [ expr int(ceil($maxy) - floor($miny)) ]
+   set nz [ expr int(ceil($maxz) - floor($minz)) ]
+
+   set totgp [ expr $nx*$ny*$nz ]
+
+   # INITIALIZE GRID
+   puts "INITIALIZING GRID"
+   for {set i 0} {$i < $nx} {incr i} {
+   for {set j 0} {$j < $ny} {incr j} {
+   for {set k 0} {$k < $nz} {incr k} {
+      set grid($i,$j,$k) 0.0
+   }}}
+
+   # OPEN COORDINATE FILE
+   set in [open $pdbin r]
+
+   set PI 3.1415926535897931
+   set PI2 [ expr { 2.0*$PI } ]
+   set sqrtPI2 [ expr { sqrt($PI2) } ]
+   set Gnorm [ expr { 1.0/($sqrtPI2**3) } ]
+   set Gnorm [ expr { $Gnorm/($sigma**3) } ]
+
+   puts "STARTING MAIN LOOP"
+   set counter 0
+   set n_gaus 0
+   while { [gets $in InputLine] >= 0 } {
+
+      # READ LINE OFF COORDINATE FILE.
+      scan $InputLine "%e %e %e" XX YY ZZ
+   
+      # DETERMINE THE CLOSEST GRID POINT TO THIS POINT.
+      set gridx [ expr {round( ($XX - [lindex $origin 0])/$deltax )} ]
+      set gridy [ expr {round( ($YY - [lindex $origin 1])/$deltay )} ]
+      set gridz [ expr {round( ($ZZ - [lindex $origin 2])/$deltaz )} ]
+   
+      # DETERMINE GRID POINTS TO ACCUMULATE (CUTOFF USED).
+      set strtx [ expr $gridx - 5 ]
+      set strty [ expr $gridy - 5 ]
+      set strtz [ expr $gridz - 5 ]
+      set endx [ expr $gridx + 6 ]
+      set endy [ expr $gridy + 6 ]
+      set endz [ expr $gridz + 6 ]
+   
+      # COMPUTE GAUSSIAN VALUES ON AFFECTED GRID POINTS.
+      for {set i $strtx} {$i < $endx} {incr i} {
+      for {set j $strty} {$j < $endy} {incr j} {
+      for {set k $strtz} {$k < $endz} {incr k} {
+         # Check we are inside grid.
+         if { $i < 0 || $i >= $nx } continue
+         if { $j < 0 || $j >= $ny } continue
+         if { $k < 0 || $k >= $nz } continue
+         # Get cartesians corresponging to this grid point.
+         set rx [ get_position_from_index $i $deltax $originx  ]
+         set ry [ get_position_from_index $j $deltay $originy  ]
+         set rz [ get_position_from_index $k $deltaz $originz  ]
+         # Compute gaussian kernel.
+         set gausx [ expr { exp(-0.5 * (($rx-$XX)/$sigma)**2) } ]
+         set gausy [ expr { exp(-0.5 * (($ry-$YY)/$sigma)**2) } ]
+         set gausz [ expr { exp(-0.5 * (($rz-$ZZ)/$sigma)**2) } ]
+         # Acumulate on grid point.
+         set grid($i,$j,$k) [ expr { $grid($i,$j,$k) + $gausx*$gausy*$gausz*$Gnorm } ]
+      }}}
+      set n_gaus [ expr { $n_gaus + 1 } ]
+      set counter [ expr $counter + 1 ]
+      puts "STEP No $counter"
+   }
+   
+   # NORMALIZE GRID AND COMPUTE FREE ENERGY.
+  # puts "NORMALIZING GRID AND COMPUTING FREE ENERGIES"
+  # for {set i 0} {$i < $nx} {incr i} {
+  # for {set j 0} {$j < $nx} {incr j} {
+  # for {set k 0} {$k < $nx} {incr k} {
+  #    if { $grid($i,$j,$k) > 1e-10 } { 
+  #       set grid($i,$j,$j) [ expr { -log($grid($i,$j,$k)/$n_gaus) } ]
+  #    } else { 
+  #       set grid($i,$j,$k) 1000.0
+  #    }
+  # }}}
+
+   puts $origin
+   puts "WRITING RESULTS TO .DX FILE"
+   write_DX $dxout
+
+
+}
+
+
+##########################################################################################
+##                             MINIMA SEARCH                                            ##
+##########################################################################################
 
 proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdelta ydelta zdelta} {
 
@@ -464,7 +978,7 @@ proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
    return [list $refx $refy $refz $Gmin]
 }    
 
-proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 ntot} {
+proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 ntot ini end ene_ini ene_end} {
    
    global grilla
    global connect_list
@@ -637,8 +1151,9 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
       print_pdb $out_fh2 $xOrigen $yOrigen $zOrigen $x $y $z $xdelta $ydelta $zdelta 1.0 $i 1
    }
 #   close $out_fh2
-#   set out_fh3 [open "optimized_path.pdb" w]
+   set enefh [open "energy_profile_${ini}_${end}.pdb" w]
    set fmt "ATOM  %5d  N   MIN %5d    %8.3f%8.3f%8.3f %5.2f  0.00"
+   set fmtene "%5d %5d  %8.3f"
    set fmtcon "CONECT  %4d %4d %4d %4d "
    for {set i 0} {$i < [llength $min_list_x]} {incr i} {
       set Gmin [ lindex $Gmin_list $i ]
@@ -647,19 +1162,25 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
       set z [ lindex $min_list_z $i ]
       set index [expr $ntot + $i ]
       print_pdb $out_fh3 $xOrigen $yOrigen $zOrigen $x $y $z $xdelta $ydelta $zdelta $Gmin $index 1
+      # Print energy profiles
       if { $i == 0 } { 
-         #lappend connect_list [list $index [expr $index + 1]] 
+         puts $enefh [ format $fmtene $ini $end $ene_ini ]
+      } elseif { $i == [expr [llength $min_list_x]-1] } {
+         puts $enefh [ format $fmtene $ini $end $ene_end ]
+      } else {
+         puts $enefh [ format $fmtene $ini $end $Gmin ]
+      }
+
+      if { $i == 0 } { 
          lappend connect_list [list [expr $index + 1]] 
       } elseif { $i == [expr [llength $min_list_x] - 1] } {
-         #lappend connect_list [list $index [expr $index - 1]]
          lappend connect_list [list [expr $index - 1]]
       } else {
-         #lappend connect_list [list $index [expr $index - 1] [expr $index + 1]]
          lappend connect_list [list [expr $index - 1] [expr $index + 1]]
       }
    }
+   close $enefh
    return [llength $min_list_x]
-#   close $out_fh3
 
 
 #   puts $out_fh [format $fmt 2 2 $pos2x $pos2y $pos2z 1.0 ]
