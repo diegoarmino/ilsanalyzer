@@ -38,8 +38,8 @@ puts "\n\n--------- a programm that analyzes ligand migration thought ILS grids 
 ##########################################################################
 #            PROCEDURE DEFINITIONS
 ##########################################################################
- 
- 
+
+
 proc load_pdb_to_vmd {a_pdb_file} {
    # LOAD A PDB FILE WITH PROTEIN STRUCTURE INTO VMD
    if {[file exists $a_pdb_file] == 1} {
@@ -70,12 +70,12 @@ proc load_dx_to_vmd {a_dx_file} {
    # LOAD DX FILE WITH ILS RESULTS INTO VMD.
    if {[file exists $a_dx_file] == 1} {
       set dx_file [open $a_dx_file r]
-      
+
       mol new $a_dx_file type dx first 0 last -1 step 1 waitfor 1 volsets 0
       mol modstyle 0 1 Isosurface 0.723546 0 0 0 1 1
       mol modmaterial 0 1 Transparent
       display resetview
-      
+
       set dx_ok 1;
       set seguir 1;
    } else {
@@ -86,26 +86,26 @@ proc load_dx_to_vmd {a_dx_file} {
 
 
 proc read_DX {a_dx_file} {
-   # Reads ILS .dx grid file. 
-   # Ouputs 
-   #   * grilla(i,j,k) --> Array variable. Contains energy values as a 
+   # Reads ILS .dx grid file.
+   # Ouputs
+   #   * grilla(i,j,k) --> Array variable. Contains energy values as a
    #                       function of grid coordinates.
-   #   * varlist(i)    --> Array varible. Contains energy values as a 
+   #   * varlist(i)    --> Array varible. Contains energy values as a
    #                       one-dimensional list.
    #
 
    global grilla
    global valList
-   global X
-   global Y
-   global Z
+   global endgridX
+   global endgridY
+   global endgridZ
    global xdelta
    global ydelta
    global zdelta
    global xOrigen
    global yOrigen
    global zOrigen
-   
+
    set in [open $a_dx_file r]
 
    # Reading Title
@@ -114,7 +114,7 @@ proc read_DX {a_dx_file} {
 
    # Reading maximum grid indexes.
    set InputLine [gets $in]
-   scan $InputLine "object 1 class gridpositions counts %i %i %i" X Y Z
+   scan $InputLine "object 1 class gridpositions counts %i %i %i" endgridX endgridY endgridZ
 
    # Reading origin of coordinates.
    set InputLine [gets $in]
@@ -128,18 +128,18 @@ proc read_DX {a_dx_file} {
    scan $InputLine "delta %e %e %e" dum1 ydelta dum2
    set InputLine [gets $in]
    scan $InputLine "delta %e %e %e" dum2 dum1 zdelta
-   set xVec [list [expr $xdelta * $X] 0 0 ]
-   set yVec [list 0 [expr $ydelta * $Y] 0 ]
-   set zVec [list 0 0 [expr $zdelta * $Z] ]
+   set xVec [list [expr $xdelta * $endgridX] 0 0 ]
+   set yVec [list 0 [expr $ydelta * $endgridY] 0 ]
+   set zVec [list 0 0 [expr $zdelta * $endgridZ] ]
 
    # Reading inconsequential stuff.
    set InputLine [gets $in]
    set InputLine [gets $in]
-   set total [expr int($X* $Y * $Z / 3)]
+   set total [expr int($endgridX* $endgridY * $endgridZ / 3)]
 
    # Printing summary of .DX file prologue.
-   puts "Dimensions = x:$X y:$Y z:$Z"
-   puts "Origin: $xOrigen $yOrigen $zOrigen" 
+   puts "Dimensions = x:$endgridX y:$endgridY z:$endgridZ"
+   puts "Origin: $xOrigen $yOrigen $zOrigen"
    puts "Resolution = x:$xdelta y:$ydelta z:$zdelta"
    puts "Reading values..."
 
@@ -160,25 +160,25 @@ proc read_DX {a_dx_file} {
       set c [expr $c+3]
       incr count
    }
-   if {[expr $X * $Y * $Z - 3 * $total] == 2} {
+   if {[expr $endgridX * $endgridY * $endgridZ - 3 * $total] == 2} {
       scan $InputLine "%e %e" v1 v2
       set valList($a) $v1
       set valList($b) $v2
       set a [expr $a+3]
       set b [expr $b+3]
    }
-   if {[expr $X * $Y * $Z - 3 * $total] == 1} {
+   if {[expr $endgridX * $endgridY * $endgridZ - 3 * $total] == 1} {
       scan $InputLine "%e"  v1
       set valList($a) $v1
       set a [expr $a+3]
    }
 
    puts "Loaded all energy values."
-   
+
    set v 0
-   for {set i 0} {$i < $X} {incr i} {
-   for {set j 0} {$j < $Y} {incr j} {
-   for {set k 0} {$k < $Z} {incr k} {
+   for {set i 0} {$i < $endgridX} {incr i} {
+   for {set j 0} {$j < $endgridY} {incr j} {
+   for {set k 0} {$k < $endgridZ} {incr k} {
       # Compiling energies as a 3D array.
       set grilla($i,$j,$k) $valList($v);
       incr v;
@@ -224,12 +224,12 @@ proc lremove {args} {
 
 
 proc write_pruned_DX {p_dx_file path_pdb cutoff} {
-   # Writes a pruned ILS .dx grid file for better visualization. The pruning 
-   # is performed with a proximity criteria with the previously computed reaction 
+   # Writes a pruned ILS .dx grid file for better visualization. The pruning
+   # is performed with a proximity criteria with the previously computed reaction
    # paths. All grid points within a cutoff radius of the reaction path points
-   # are asigned their original energy value. The rest get a very high energy value 
+   # are asigned their original energy value. The rest get a very high energy value
    # (100.00 by default) so they are not visualized in VMD. This is intended to help
-   # with the visualization of complex pathway systems inside proteins. 
+   # with the visualization of complex pathway systems inside proteins.
 
    global grilla
    global valList
@@ -242,7 +242,7 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    global xOrigen
    global yOrigen
    global zOrigen
-   
+
    set outf [open $p_dx_file w]
 
    # Reading Title
@@ -277,11 +277,11 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    set path_lines [ lrange $path_lines 0 end-1 ]
    set npoints [ llength $path_lines ]
    foreach l $path_lines {
-      lappend path_x [ lindex $l 5 ] 
-      lappend path_y [ lindex $l 6 ] 
-      lappend path_z [ lindex $l 7 ] 
+      lappend path_x [ lindex $l 5 ]
+      lappend path_y [ lindex $l 6 ]
+      lappend path_z [ lindex $l 7 ]
    }
-   
+
    # Now writing energy values.
    set dbcnt 1
    set cnt 1
@@ -303,15 +303,15 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
          set pz [ lindex $path_z $m ]
          set dist [ distance $px $py $pz $grid_pos_x $grid_pos_y $grid_pos_z ]
          if { $dist < $cutoff } {
-            lappend gridline $grilla($i,$j,$k) 
+            lappend gridline $grilla($i,$j,$k)
             lappend full_list $grilla($i,$j,$k)
             set dbcnt [expr $dbcnt + 1]
             set is_near_min 1
             break
          }
       }
-      if { $is_near_min == 0 } { 
-         lappend gridline 100.00 
+      if { $is_near_min == 0 } {
+         lappend gridline 100.00
          lappend full_list 60.00
          set dbcnt [expr $dbcnt + 1]
       }
@@ -358,7 +358,7 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    }
    close $outf
 
-#   if { [ llength $gridline ] == 2 } { 
+#   if { [ llength $gridline ] == 2 } {
 #      set g0 [ lindex $gridline 0 ]
 #      set g1 [ lindex $gridline 1 ]
 #      puts $outf [ format $fmtdx2 $g0 $g1 ]
@@ -376,11 +376,11 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
 
 
 proc read_occupation_volmap_DX {a_dx_file} {
-   # Reads ILS .dx grid file. 
-   # Ouputs 
-   #   * grilla(i,j,k) --> Array variable. Contains energy values as a 
+   # Reads ILS .dx grid file.
+   # Ouputs
+   #   * grilla(i,j,k) --> Array variable. Contains energy values as a
    #                       function of grid coordinates.
-   #   * varlist(i)    --> Array varible. Contains energy values as a 
+   #   * varlist(i)    --> Array varible. Contains energy values as a
    #                       one-dimensional list.
    #
 
@@ -395,7 +395,7 @@ proc read_occupation_volmap_DX {a_dx_file} {
    global xOrigen
    global yOrigen
    global zOrigen
-   
+
 
    set in [open $a_dx_file r]
 
@@ -430,7 +430,7 @@ proc read_occupation_volmap_DX {a_dx_file} {
 
    # Printing summary of .DX file prologue.
    puts "Dimensions = x:$X y:$Y z:$Z"
-   puts "Origin: $xOrigen $yOrigen $zOrigen" 
+   puts "Origin: $xOrigen $yOrigen $zOrigen"
    puts "Resolution = x:$xdelta y:$ydelta z:$zdelta"
    puts "Reading values..."
 
@@ -469,7 +469,7 @@ proc read_occupation_volmap_DX {a_dx_file} {
    }
 
    puts "Loaded all energy values."
-   
+
    set v 0
    for {set i 0} {$i < $X} {incr i} {
    for {set j 0} {$j < $Y} {incr j} {
@@ -486,12 +486,12 @@ proc read_occupation_volmap_DX {a_dx_file} {
 
 
 proc write_DX {out_dx_file} {
-   # Writes a pruned ILS .dx grid file for better visualization. The pruning 
-   # is performed with a proximity criteria with the previously computed reaction 
+   # Writes a pruned ILS .dx grid file for better visualization. The pruning
+   # is performed with a proximity criteria with the previously computed reaction
    # paths. All grid points within a cutoff radius of the reaction path points
-   # are asigned their original energy value. The rest get a very high energy value 
+   # are asigned their original energy value. The rest get a very high energy value
    # (100.00 by default) so they are not visualized in VMD. This is intended to help
-   # with the visualization of complex pathway systems inside proteins. 
+   # with the visualization of complex pathway systems inside proteins.
 
    global grid
    global nx
@@ -503,7 +503,7 @@ proc write_DX {out_dx_file} {
    global originx
    global originy
    global originz
-   
+
    set outf [open $out_dx_file w]
 
    # Reading Title
@@ -582,7 +582,7 @@ proc write_DX {out_dx_file} {
 }
 
 ##########################################################################################
-##                  GAUSSIAN KERNEL REPRESENTATION ANALYSIS                             ##
+##                  GAUSSIAN KERNEL DENSITY ESTIMATOR ANALYSIS                             ##
 ##########################################################################################
 proc GKRanalysis { pdbin dxout minmax delta sigma } {
    global grid
@@ -595,7 +595,7 @@ proc GKRanalysis { pdbin dxout minmax delta sigma } {
    global originx
    global originy
    global originz
-   
+
    # PREPARING GRID
    puts "DEFINING GRID PARAMETERS"
    set deltax [lindex $delta 0]
@@ -615,9 +615,9 @@ proc GKRanalysis { pdbin dxout minmax delta sigma } {
    set maxy [ expr [lindex $minmax 1 1] + $deltay ]
    set maxz [ expr [lindex $minmax 1 2] + $deltaz ]
 
-   set nx [ expr int(ceil($maxx) - floor($minx)) ]
-   set ny [ expr int(ceil($maxy) - floor($miny)) ]
-   set nz [ expr int(ceil($maxz) - floor($minz)) ]
+   set nx [ expr int((ceil($maxx) - floor($minx))/$deltax) ]
+   set ny [ expr int((ceil($maxy) - floor($miny))/$deltay) ]
+   set nz [ expr int((ceil($maxz) - floor($minz))/$deltaz) ]
 
    set totgp [ expr $nx*$ny*$nz ]
 
@@ -645,12 +645,21 @@ proc GKRanalysis { pdbin dxout minmax delta sigma } {
 
       # READ LINE OFF COORDINATE FILE.
       scan $InputLine "%e %e %e" XX YY ZZ
-   
+      lappend lxx $XX
+      lappend lyy $YY
+      lappend lzz $ZZ
+   }
+
+   for {set i 0} {$i < [llength $lxx]} {incr i} {
+      set XX [ lindex $lxx $i ]
+      set YY [ lindex $lyy $i ]
+      set ZZ [ lindex $lzz $i ]
+
       # DETERMINE THE CLOSEST GRID POINT TO THIS POINT.
       set gridx [ expr {round( ($XX - [lindex $origin 0])/$deltax )} ]
       set gridy [ expr {round( ($YY - [lindex $origin 1])/$deltay )} ]
       set gridz [ expr {round( ($ZZ - [lindex $origin 2])/$deltaz )} ]
-   
+
       # DETERMINE GRID POINTS TO ACCUMULATE (CUTOFF USED).
       set strtx [ expr $gridx - 5 ]
       set strty [ expr $gridy - 5 ]
@@ -658,7 +667,7 @@ proc GKRanalysis { pdbin dxout minmax delta sigma } {
       set endx [ expr $gridx + 6 ]
       set endy [ expr $gridy + 6 ]
       set endz [ expr $gridz + 6 ]
-   
+
       # COMPUTE GAUSSIAN VALUES ON AFFECTED GRID POINTS.
       for {set i $strtx} {$i < $endx} {incr i} {
       for {set j $strty} {$j < $endy} {incr j} {
@@ -682,15 +691,15 @@ proc GKRanalysis { pdbin dxout minmax delta sigma } {
       set counter [ expr $counter + 1 ]
       puts "STEP No $counter"
    }
-   
+
    # NORMALIZE GRID AND COMPUTE FREE ENERGY.
   # puts "NORMALIZING GRID AND COMPUTING FREE ENERGIES"
   # for {set i 0} {$i < $nx} {incr i} {
   # for {set j 0} {$j < $nx} {incr j} {
   # for {set k 0} {$k < $nx} {incr k} {
-  #    if { $grid($i,$j,$k) > 1e-10 } { 
+  #    if { $grid($i,$j,$k) > 1e-10 } {
   #       set grid($i,$j,$j) [ expr { -log($grid($i,$j,$k)/$n_gaus) } ]
-  #    } else { 
+  #    } else {
   #       set grid($i,$j,$k) 1000.0
   #    }
   # }}}
@@ -707,7 +716,7 @@ proc GKRanalysis { pdbin dxout minmax delta sigma } {
 ##                             MINIMA SEARCH                                            ##
 ##########################################################################################
 
-proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdelta ydelta zdelta} {
+proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdelta ydelta zdelta endgridX endgridY endgridZ } {
 
    # MAIN OPTIMIZER
    # Given an initial position, finds the nearest representation of it in the ILS grid
@@ -715,10 +724,8 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
    # neighbouring cells have higher energy values than the cell we a are on.
 
    # Find the nearest grid point to a single reference coordinate.
-   # This is done by Ref = (x0 + DeltaX * gridx, y0 + DeltaY * gridy, z0 + DeltaZ * gridz)
-   # and finding the values of gridx, gridy and gridz by solving the linear equation.
    # gridx, gridy and gridz are real values, but  we need intger values so we round off.
-   
+
    # Due to limitations intrisic to TCL, it is impossible to pass array variables to a
    # procedure directly (Yeah! I know, right?). There are rather cumbersome ways to do it
    # but I'll risk just making these following variables global.
@@ -730,10 +737,11 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
    set refx $ref_coord_x
    set refy $ref_coord_y
    set refz $ref_coord_z
-   
+
    set minfound 0
-   if { [ info exists $grilla($refx,$refy,$refz) ] } { 
-      return 
+#   puts "$refx $refy $refz exists? ->> [ info exists $grilla($refx,$refy,$refz) ]"
+   if { [ info exists $grilla($refx,$refy,$refz) ] } {
+      return
    }
    set Gmin $grilla($refx,$refy,$refz)
    set minx $refx
@@ -742,15 +750,20 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
    set cnt 1
    while { $minfound == 0 } {
       set moved 0
-      puts -nonewline "Starting step no "
-      puts $cnt
+      puts "Starting step no $cnt"
       foreach zz [list -1 0 1] {
          foreach yy [list -1 0 1] {
             foreach xx [list -1 0 1] {
+
                set testx [expr $refx + $xx]
                set testy [expr $refy + $yy]
                set testz [expr $refz + $zz]
-               if { [ info exists $grilla($refx,$refy,$refz) ] } { continue }
+
+               if {$testx < 0 || $testx >= $endgridX} {continue}
+               if {$testy < 0 || $testy >= $endgridY} {continue}
+               if {$testz < 0 || $testz >= $endgridZ} {continue}
+#               if { [ info exists $grilla($testx,$testy,$testz) ] } { continue }
+
                set Gtest $grilla($testx,$testy,$testz)
                if { $Gtest < $Gmin } {
                   set Gmin $Gtest
@@ -766,6 +779,8 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
          set refx $minx
          set refy $miny
          set refz $minz
+#      puts "AAAAAAAAAAAAAAAAAAAAA"
+#      puts "$refx $refy $refz"
       } else {
          set minfound 1
          puts "Minimum found!"
@@ -773,17 +788,17 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
       set cnt [expr $cnt + 1]
    }
    return [list $refx $refy $refz $Gmin]
-}    
+}
 
-proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zdelta radius outfile} {
+proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zdelta radius endgridX endgridY endgridZ outfile} {
 
    # GLOBAL OPTIMIZATION
-   # Given an initial position, creates a square grid of given radius around said position. 
+   # Given an initial position, creates a square grid of given radius around said position.
    # Each point in the grid is treated as a starting position for optimization using the
    # single point optimizer procedure.
    # All optmized positions are printed into a PDB file.
 
-   
+
    # Due to limitations intrisic to TCL, it is impossible to pass array variables to a
    # procedure directly (Yeah! I know, right?). There are rather cumbersome ways to do it
    # but I'll risk just making these following variables global.
@@ -799,35 +814,39 @@ proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zde
       set refx [ expr {round( ([lindex $a 0] - $xOrigen)/$xdelta )} ]
       set refy [ expr {round( ([lindex $a 1] - $yOrigen)/$ydelta )} ]
       set refz [ expr {round( ([lindex $a 2] - $zOrigen)/$zdelta )} ]
-      
+
       set minfound 0
       set Gmin $grilla($refx,$refy,$refz)
       set minx $refx
       set miny $refy
       set minz $refz
       set total [ expr 8*($radius)**3 ]
-      
+
       set cnt 1
-      for {set x [expr -1 * $radius]} {$x <= $radius} {incr x} {
-      for {set y [expr -1 * $radius]} {$y <= $radius} {incr y} {
-      for {set z [expr -1 * $radius]} {$z <= $radius} {incr z} {
+      for {set x [expr -1 * round($radius)]} {$x <= round($radius)} {incr x} {
+      for {set y [expr -1 * round($radius)]} {$y <= round($radius)} {incr y} {
+      for {set z [expr -1 * round($radius)]} {$z <= round($radius)} {incr z} {
          puts ""
          puts "POINT No $cnt / $total"
-         set inix [ expr $refx + $x ]
-         set iniy [ expr $refy + $y ]
-         set iniz [ expr $refz + $z ]
-   
+         set inix [ expr $refx + round($x) ]
+         set iniy [ expr $refy + round($y) ]
+         set iniz [ expr $refz + round($z) ]
+
          puts " $refx  $refy  $refz "
          puts " $inix  $iniy  $iniz "
-   
-         set opt [optimizer $inix $iniy $iniz $xOrigen $yOrigen $zOrigen $xdelta $ydelta $zdelta]
-         # Now I have to separate the previous output into different variables because TCL is
-         # that full of shit.
+
+         # DANGER! maxgrid not defined!!!
+         if { $inix < 0 || $inix > $endgridX } { continue }
+         if { $iniy < 0 || $iniy > $endgridY } { continue }
+         if { $iniz < 0 || $iniz > $endgridZ } { continue }
+
+         set opt [optimizer $inix $iniy $iniz $xOrigen $yOrigen $zOrigen $xdelta $ydelta $zdelta $endgridX $endgridY $endgridZ]
          set Gmin [lindex $opt 3]
          if { $Gmin < 20.00 && [ lsearch $opt_list $opt ] == -1 } {
             lappend opt_list $opt
          }
-         incr cnt
+	 set cnt [expr $cnt + 1]
+	 puts "CACAAAAAAAAAAAA $cnt"
       }}}
    }
    puts $opt_list
@@ -843,7 +862,7 @@ proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zde
       print_pdb $out_fh $xOrigen $yOrigen $zOrigen $minx $miny $minz $xdelta $ydelta $zdelta $Gmin $cnt $leaveopen
    }
    close $out_fh
-}    
+}
 
 
 
@@ -869,8 +888,8 @@ proc distance { x1 y1 z1 x2 y2 z2 } {
    set dist [ expr { sqrt ( ($x2 - $x1 )**2 + ($y2 - $y1)**2 + ($z2 - $z1)**2 ) } ]
    return $dist
 }
- 
- 
+
+
 proc get_position_from_index { indx delta origin } {
    set pos [ expr { $origin + $delta * double($indx) } ]
    return $pos
@@ -898,7 +917,7 @@ proc is_inside {border1_x border1_y border1_z border2_x border2_y border2_z poin
    return $result
 
 }
- 
+
 
 proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
                     xOrigen yOrigen zOrigen \
@@ -909,7 +928,7 @@ proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
 
    # NEB OPTIMIZER
    # Optimization of a single point between two planes defined by two points and a vector.
-   # This procedure is part of the grid-NEB subrutine which finds the optimal path between 
+   # This procedure is part of the grid-NEB subrutine which finds the optimal path between
    # two points in a grid.
 
    # Due to limitations intrisic to TCL, it is impossible to pass array variables to a
@@ -920,7 +939,7 @@ proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
    set refx $ref_indx_x
    set refy $ref_indx_y
    set refz $ref_indx_z
-   
+
    set minfound 0
    set Gmin $grilla($refx,$refy,$refz)
    set minx $refx
@@ -976,17 +995,17 @@ proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
       set cnt [expr $cnt + 1]
    }
    return [list $refx $refy $refz $Gmin]
-}    
+}
 
 proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 ntot ini end ene_ini ene_end} {
-   
+
    global grilla
    global connect_list
    # Find middlepoint
    # First compute difference vector between the two positions
-   set posRx [expr {($pos2x - $pos1x)}] 
-   set posRy [expr {($pos2y - $pos1y)}] 
-   set posRz [expr {($pos2z - $pos1z)}] 
+   set posRx [expr {($pos2x - $pos1x)}]
+   set posRy [expr {($pos2y - $pos1y)}]
+   set posRz [expr {($pos2z - $pos1z)}]
 
 
    # Find the nearest grid point to a single reference coordinate.
@@ -1064,9 +1083,9 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
    set full_band_points_y [ linsert $ini_path_y 0 $indx_ini_y ]
    set full_band_points_z [ linsert $ini_path_z 0 $indx_ini_z ]
 
-   lappend full_band_points_x $indx_end_x 
-   lappend full_band_points_y $indx_end_y 
-   lappend full_band_points_z $indx_end_z 
+   lappend full_band_points_x $indx_end_x
+   lappend full_band_points_y $indx_end_y
+   lappend full_band_points_z $indx_end_z
 
 
    set band_length [ llength $ini_path_x ]
@@ -1083,7 +1102,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
    set normRz [ expr { $posRz / $normR } ]
   puts "STARTING BORDERS SETUP"
    for {set pnt1 0} {$pnt1 < [expr $full_band_length - 1]} {incr pnt1} {
-      puts "Step $pnt1" 
+      puts "Step $pnt1"
       set pnt2 [ expr $pnt1 + 1 ]
 
       set pnt2_x [ get_position_from_index [lindex $full_band_points_x $pnt2] $xdelta $xOrigen ]
@@ -1110,11 +1129,11 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
 
    }
    # OPTIMIZE EACH POINT OF THE PATH WITHIN ITS RESTRICTIONS.
-   
+
    lappend min_list_x $indx_ini_x
    lappend min_list_y $indx_ini_y
    lappend min_list_z $indx_ini_z
-   lappend Gmin_list  1.0
+   lappend Gmin_list  9.0
    for { set pnt1 0 } { $pnt1 < $band_length } { incr pnt1 } {
       set ref_indx_x [lindex $ini_path_x $pnt1]
       set ref_indx_y [lindex $ini_path_y $pnt1]
@@ -1128,7 +1147,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
    lappend min_list_x $indx_end_x
    lappend min_list_y $indx_end_y
    lappend min_list_z $indx_end_z
-   lappend Gmin_list  1.0
+   lappend Gmin_list  9.0
 
 ############################################################################
 #  PRINT RESULTS
@@ -1163,7 +1182,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
       set index [expr $ntot + $i ]
       print_pdb $out_fh3 $xOrigen $yOrigen $zOrigen $x $y $z $xdelta $ydelta $zdelta $Gmin $index 1
       # Print energy profiles
-      if { $i == 0 } { 
+      if { $i == 0 } {
          puts $enefh [ format $fmtene $ini $end $ene_ini ]
       } elseif { $i == [expr [llength $min_list_x]-1] } {
          puts $enefh [ format $fmtene $ini $end $ene_end ]
@@ -1171,8 +1190,8 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
          puts $enefh [ format $fmtene $ini $end $Gmin ]
       }
 
-      if { $i == 0 } { 
-         lappend connect_list [list [expr $index + 1]] 
+      if { $i == 0 } {
+         lappend connect_list [list [expr $index + 1]]
       } elseif { $i == [expr [llength $min_list_x] - 1] } {
          lappend connect_list [list [expr $index - 1]]
       } else {
@@ -1186,5 +1205,123 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
 #   puts $out_fh [format $fmt 2 2 $pos2x $pos2y $pos2z 1.0 ]
 #   puts $out_fh [format $fmt 3 3 $posMx $posMy $posMz 1.0 ]
 
-   
+
+}
+
+proc search_pathways { start_indx_list opt_file pathway_file } {
+# MAIN PROCEDURE TO SEARCH FOR PATHWAYS BETWEEN MINIMA.
+# USE THIS PROCEDURE AS A COMMAND.
+
+   global xOrigen
+   global yOrigen
+   global zOrigen
+   global xdelta
+   global ydelta
+   global zdelta
+   global minlist
+   global connect_list
+
+   # FROM INITIAL INDEX LIST OBTAIN THE LIST OF RELEVANT MINIMA (MINLIST).
+   set minlist [list ]
+   foreach a $start_indx_list {
+      foreach b $a {
+         if { [ lsearch $minlist $b ] < 0 } {
+            lappend minlist $b }
+      }
+   }
+
+   mol new $opt_file type {pdb} first 0 last -1 step 1 waitfor 1
+
+   set out_fh1 [open "wat_gkr_borders.pdb" w]
+   set out_fh2 [open "wat_gkr_initial_path.pdb" w]
+   set out_fh3 [open $pathway_file w]
+   set cnt 1
+   set ntot 0
+   set connect_list [list ]
+
+   foreach a $start_indx_list {
+      puts "STARTING NEB ANALYSIS No $cnt/[llength $start_indx_list]"
+      set ini [lindex $a 0]
+      set end [lindex $a 1]
+      set sel_ini [ atomselect top "index $ini" ]
+      set sel_end [ atomselect top "index $end" ]
+      set ene_ini [ $sel_ini get occupancy ]
+      set ene_end [ $sel_end get occupancy ]
+      set pos1 [ $sel_ini get {x y z} ]
+      set pos2 [ $sel_end get {x y z} ]
+      set pos1x [lindex $pos1 0 0]
+      set pos1y [lindex $pos1 0 1]
+      set pos1z [lindex $pos1 0 2]
+      set pos2x [lindex $pos2 0 0]
+      set pos2y [lindex $pos2 0 1]
+      set pos2z [lindex $pos2 0 2]
+      set npnts [ grid_NEB $pos1x $pos1y $pos1z  $pos2x $pos2y $pos2z \
+                           $xOrigen $yOrigen $zOrigen \
+                           $xdelta $ydelta $zdelta \
+                           $out_fh3 $out_fh2 $out_fh1 \
+                           $ntot $ini $end $ene_ini $ene_end ]
+      set ntot [expr { $ntot + $npnts } ]
+      set cnt [expr $cnt + 1]
+   }
+
+   close $out_fh3
+   close $out_fh2
+   close $out_fh1
+}
+
+proc gkr_analysis_preparation { selection batch max_frames top traj output do_build_input } {
+
+   global gkr_line_cnt
+
+   set fmt "%11.5f%11.5f%11.5f"
+   if { $do_build_input == 1 } {
+      set fh [open "tmp1" w]
+      set gkr_line_cnt 1
+
+      set frm 1
+      exec rm -rf $output
+      for {set i 0} {$i < $max_frames} {incr i $batch} {
+         mol load parm7 $top
+         mol addfile $traj step 1 first $i last [expr $i + $batch - 1]  waitfor all type netcdf
+
+         set sel [ atomselect top $selection ]
+         set nfr [molinfo top get numframes]
+
+         for {set j 0} {$j < $nfr} {incr j} {
+            $sel frame $j
+            $sel update
+   	 set xyz_list [ $sel get {x y z} ]
+   	 foreach a $xyz_list {
+               set x [ lindex $a 0 ]
+               set y [ lindex $a 1 ]
+               set z [ lindex $a 2 ]
+               puts $fh [ format $fmt $x $y $z ]
+   	    set gkr_line_cnt [expr $gkr_line_cnt + 1]
+            }
+            $sel writepdb tmp.pdb
+            exec cat tmp.pdb >> $output
+   	 puts "$frm / $max_frames"
+   	 set frm [ expr $frm + 1 ]
+         }
+         mol delete top
+         $sel delete
+      }
+      close $fh
+   }
+
+   exec  sed -i /END/d $output
+   exec  sed -i /CRYST/d $output
+
+   mol load pdb $output
+   set selmm [ atomselect top "all" ]
+   set minmax [ measure minmax $selmm ]
+
+   set fh [open "tmp2" w]
+   puts $fh [format $fmt [lindex $minmax 0 0] [lindex $minmax 0 1] [lindex $minmax 0 2] ]
+   puts $fh [format $fmt [lindex $minmax 1 0] [lindex $minmax 1 1] [lindex $minmax 1 2] ]
+   close $fh
+
+   exec rm -rf "${output}.xyz"
+   exec cat tmp2 tmp1 > "${output}.xyz"
+
 }
