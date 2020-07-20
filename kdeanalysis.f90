@@ -1,4 +1,9 @@
-program gkr
+program kde
+!----------------------------------------------------------------------------
+! GAUSSIAN KERNEL DENSITY ESTIMATOR ANALYSIS
+! This program performs KDE over a selection of a trajectory in order to obtain
+! a 3D map of probability and the corresponding free energy estimation.
+!----------------------------------------------------------------------------
 implicit none
 
 character(len=50) :: xyzfile, csigma, cnlines, cdelta
@@ -152,4 +157,4 @@ end do
 write(003,*)
 close(unit=003)
 
-end program gkr
+end program kde
