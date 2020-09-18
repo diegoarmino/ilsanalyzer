@@ -233,9 +233,9 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
 
    global grilla
    global valList
-   global X
-   global Y
-   global Z
+   global endgridX
+   global endgridY
+   global endgridZ
    global xdelta
    global ydelta
    global zdelta
@@ -250,7 +250,7 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    puts $outf "#"
 
    # Reading maximum grid indexes.
-   puts $outf  "object 1 class gridpositions counts $X $Y $Z"
+   puts $outf  "object 1 class gridpositions counts $endgridX $endgridY $endgridZ"
 
    # Reading origin of coordinates.
    puts $outf  "origin $xOrigen $yOrigen $zOrigen"
@@ -259,13 +259,13 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    puts $outf  "delta $xdelta 0 0"
    puts $outf  "delta 0 $ydelta 0"
    puts $outf  "delta 0 0 $zdelta"
-   set xVec [list [expr $xdelta * $X] 0 0 ]
-   set yVec [list 0 [expr $ydelta * $Y] 0 ]
-   set zVec [list 0 0 [expr $zdelta * $Z] ]
+   set xVec [list [expr $xdelta * $endgridX] 0 0 ]
+   set yVec [list 0 [expr $ydelta * $endgridY] 0 ]
+   set zVec [list 0 0 [expr $zdelta * $endgridZ] ]
 
    # Reading inconsequential stuff.
-   puts $outf  "object 2 class gridconnections counts $X $Y $Z"
-   puts $outf  "object 3 class array double rank 0 items [expr $X*$Y*$Z]"
+   puts $outf  "object 2 class gridconnections counts $endgridX $endgridY $endgridZ"
+   puts $outf  "object 3 class array double rank 0 items [expr $endgridX*$endgridY*$endgridZ]"
 
    puts "CREATING PRUNED .DX FILE"
 
@@ -289,9 +289,9 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    set fmtdx2 "%11.5f%11.5f"
    set fmtdx1 "%11.5f"
    set gridline [ list ]
-   for {set i 0} {$i < $X} {incr i} {
-   for {set j 0} {$j < $Y} {incr j} {
-   for {set k 0} {$k < $Z} {incr k} {
+   for {set i 0} {$i < $endgridX} {incr i} {
+   for {set j 0} {$j < $endgridY} {incr j} {
+   for {set k 0} {$k < $endgridZ} {incr k} {
       # Compiling energies as a 3D array.
       set grid_pos_x [get_position_from_index  $i $xdelta $xOrigen]
       set grid_pos_y [get_position_from_index  $j $ydelta $yOrigen]
@@ -332,7 +332,7 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
    set b 1;
    set c 2;
 
-   set total [expr int($X* $Y * $Z / 3)]
+   set total [expr int($endgridX* $endgridY * $endgridZ / 3)]
 
    set count 0
    while {$count < $total} {
@@ -347,12 +347,12 @@ proc write_pruned_DX {p_dx_file path_pdb cutoff} {
 #      puts "Line No: $count"
       incr count
    }
-   if {[expr $X * $Y * $Z - 3 * $total] == 2} {
+   if {[expr $endgridX * $endgridY * $endgridZ - 3 * $total] == 2} {
       set g0 [ lindex $full_list $a ]
       set g1 [ lindex $full_list $b ]
       puts $outf [ format $fmtdx2 $g0 $g1 ]
    }
-   if {[expr $X * $Y * $Z - 3 * $total] == 1} {
+   if {[expr $endgridX * $endgridY * $endgridZ - 3 * $total] == 1} {
       set g0 [ lindex $full_list $a ]
       puts $outf [ format $fmtdx1 $g0 $g1 ]
    }
@@ -386,9 +386,9 @@ proc read_occupation_volmap_DX {a_dx_file} {
 
    global grilla
    global valList
-   global X
-   global Y
-   global Z
+   global endgridX
+   global endgridY
+   global endgridZ
    global xdelta
    global ydelta
    global zdelta
@@ -419,17 +419,17 @@ proc read_occupation_volmap_DX {a_dx_file} {
    scan $InputLine "delta %e %e %e" dum1 ydelta dum2
    set InputLine [gets $in]
    scan $InputLine "delta %e %e %e" dum2 dum1 zdelta
-   set xVec [list [expr $xdelta * $X] 0 0 ]
-   set yVec [list 0 [expr $ydelta * $Y] 0 ]
-   set zVec [list 0 0 [expr $zdelta * $Z] ]
+   set xVec [list [expr $xdelta * $endgridX] 0 0 ]
+   set yVec [list 0 [expr $ydelta * $endgridY] 0 ]
+   set zVec [list 0 0 [expr $zdelta * $endgridZ] ]
 
    # Reading inconsequential stuff.
    set InputLine [gets $in]
    set InputLine [gets $in]
-   set total [expr int($X* $Y * $Z / 3)]
+   set total [expr int($endgridX* $endgridY * $endgridZ / 3)]
 
    # Printing summary of .DX file prologue.
-   puts "Dimensions = x:$X y:$Y z:$Z"
+   puts "Dimensions = x:$endgridX y:$endgridY z:$endgridZ"
    puts "Origin: $xOrigen $yOrigen $zOrigen"
    puts "Resolution = x:$xdelta y:$ydelta z:$zdelta"
    puts "Reading values..."
@@ -453,7 +453,7 @@ proc read_occupation_volmap_DX {a_dx_file} {
       set sumval [ expr { $sumval + $v1 + $v2 + $v3 } ]
       incr count
    }
-   if {[expr $X * $Y * $Z - 3 * $total] == 2} {
+   if {[expr $endgridX * $endgridY * $endgridZ - 3 * $total] == 2} {
       scan $InputLine "%e %e" v1 v2
       set valList($a) $v1
       set valList($b) $v2
@@ -461,7 +461,7 @@ proc read_occupation_volmap_DX {a_dx_file} {
       set b [expr $b+3]
       set sumval [ expr { $sumval + $v1 + $v2 } ]
    }
-   if {[expr $X * $Y * $Z - 3 * $total] == 1} {
+   if {[expr $endgridX * $endgridY * $endgridZ - 3 * $total] == 1} {
       scan $InputLine "%e"  v1
       set valList($a) $v1
       set sumval [ expr { $sumval + $v1 } ]
@@ -471,9 +471,9 @@ proc read_occupation_volmap_DX {a_dx_file} {
    puts "Loaded all energy values."
 
    set v 0
-   for {set i 0} {$i < $X} {incr i} {
-   for {set j 0} {$j < $Y} {incr j} {
-   for {set k 0} {$k < $Z} {incr k} {
+   for {set i 0} {$i < $endgridX} {incr i} {
+   for {set j 0} {$j < $endgridY} {incr j} {
+   for {set k 0} {$k < $endgridZ} {incr k} {
       # Compiling energies as a 3D array.
       set deltaG [ expr {-log($valList($v)/$sumval) } ]
       set grilla($i,$j,$k) $deltaG;
@@ -584,7 +584,7 @@ proc write_DX {out_dx_file} {
 ##########################################################################################
 ##                  GAUSSIAN KERNEL DENSITY ESTIMATOR ANALYSIS                             ##
 ##########################################################################################
-proc GKRanalysis { pdbin dxout minmax delta sigma } {
+proc KDEanalysis { pdbin dxout minmax delta sigma } {
    global grid
    global nx
    global ny
@@ -1232,8 +1232,8 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
 
    mol new $opt_file type {pdb} first 0 last -1 step 1 waitfor 1
 
-   set out_fh1 [open "wat_gkr_borders.pdb" w]
-   set out_fh2 [open "wat_gkr_initial_path.pdb" w]
+   set out_fh1 [open "wat_kde_borders.pdb" w]
+   set out_fh2 [open "wat_kde_initial_path.pdb" w]
    set out_fh3 [open $pathway_file w]
    set cnt 1
    set ntot 0
@@ -1269,14 +1269,14 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
    close $out_fh1
 }
 
-proc gkr_analysis_preparation { selection batch max_frames top traj output do_build_input } {
+proc kde_analysis_preparation { selection batch max_frames top traj output do_build_input } {
 
-   global gkr_line_cnt
+   global kde_line_cnt
 
    set fmt "%11.5f%11.5f%11.5f"
    if { $do_build_input == 1 } {
       set fh [open "tmp1" w]
-      set gkr_line_cnt 1
+      set kde_line_cnt 1
 
       set frm 1
       exec rm -rf $output
@@ -1290,18 +1290,18 @@ proc gkr_analysis_preparation { selection batch max_frames top traj output do_bu
          for {set j 0} {$j < $nfr} {incr j} {
             $sel frame $j
             $sel update
-   	 set xyz_list [ $sel get {x y z} ]
-   	 foreach a $xyz_list {
+            set xyz_list [ $sel get {x y z} ]
+            foreach a $xyz_list {
                set x [ lindex $a 0 ]
                set y [ lindex $a 1 ]
                set z [ lindex $a 2 ]
                puts $fh [ format $fmt $x $y $z ]
-   	    set gkr_line_cnt [expr $gkr_line_cnt + 1]
+               set kde_line_cnt [expr $kde_line_cnt + 1]
             }
             $sel writepdb tmp.pdb
             exec cat tmp.pdb >> $output
-   	 puts "$frm / $max_frames"
-   	 set frm [ expr $frm + 1 ]
+            puts "$frm / $max_frames"
+            set frm [ expr $frm + 1 ]
          }
          mol delete top
          $sel delete
