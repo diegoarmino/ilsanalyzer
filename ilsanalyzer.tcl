@@ -759,10 +759,9 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
                set testy [expr $refy + $yy]
                set testz [expr $refz + $zz]
 
-               if {$testx < 0 || $testx >= $endgridX} {continue}
-               if {$testy < 0 || $testy >= $endgridY} {continue}
-               if {$testz < 0 || $testz >= $endgridZ} {continue}
-#               if { [ info exists $grilla($testx,$testy,$testz) ] } { continue }
+               if {$testx < 0 || ($testx >= $endgridX)} {puts "Point out of grid in X. Ignoring.";continue}
+               if {$testy < 0 || ($testy >= $endgridY)} {puts "Point out of grid in Y. Ignoring.";continue}
+               if {$testz < 0 || ($testz >= $endgridZ)} {puts "Point out of grid in Z. Ignoring.";continue}
 
                set Gtest $grilla($testx,$testy,$testz)
                if { $Gtest < $Gmin } {
@@ -779,8 +778,6 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
          set refx $minx
          set refy $miny
          set refz $minz
-#      puts "AAAAAAAAAAAAAAAAAAAAA"
-#      puts "$refx $refy $refz"
       } else {
          set minfound 1
          puts "Minimum found!"
@@ -790,7 +787,7 @@ proc optimizer {ref_coord_x ref_coord_y ref_coord_z xOrigen yOrigen zOrigen xdel
    return [list $refx $refy $refz $Gmin]
 }
 
-proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zdelta radius endgridX endgridY endgridZ outfile} {
+proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zdelta endgridX endgridY endgridZ radius outfile} {
 
    # GLOBAL OPTIMIZATION
    # Given an initial position, creates a square grid of given radius around said position.
@@ -820,7 +817,7 @@ proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zde
       set minx $refx
       set miny $refy
       set minz $refz
-      set total [ expr 8*($radius)**3 ]
+      set total [ expr int((2*$radius+1)**3) ]
 
       set cnt 1
       for {set x [expr -1 * round($radius)]} {$x <= round($radius)} {incr x} {
@@ -832,10 +829,9 @@ proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zde
          set iniy [ expr $refy + round($y) ]
          set iniz [ expr $refz + round($z) ]
 
-         puts " $refx  $refy  $refz "
-         puts " $inix  $iniy  $iniz "
+#         puts " $refx  $refy  $refz "
+#         puts " $inix  $iniy  $iniz "
 
-         # DANGER! maxgrid not defined!!!
          if { $inix < 0 || $inix > $endgridX } { continue }
          if { $iniy < 0 || $iniy > $endgridY } { continue }
          if { $iniz < 0 || $iniz > $endgridZ } { continue }
@@ -846,10 +842,9 @@ proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zde
             lappend opt_list $opt
          }
 	 set cnt [expr $cnt + 1]
-	 puts "CACAAAAAAAAAAAA $cnt"
       }}}
    }
-   puts $opt_list
+#   puts $opt_list
    # Print PDB file with optimized geometries.
    set leaveopen 1
    set outfile "min.pdb"
@@ -858,7 +853,7 @@ proc global_search_min {ref_coord_list xOrigen yOrigen zOrigen xdelta ydelta zde
       set miny [lindex $a 1]
       set minz [lindex $a 2]
       set Gmin [lindex $a 3]
-      puts "$minx $miny $minz $Gmin"
+#      puts "$minx $miny $minz $Gmin"
       print_pdb $out_fh $xOrigen $yOrigen $zOrigen $minx $miny $minz $xdelta $ydelta $zdelta $Gmin $cnt $leaveopen
    }
    close $out_fh
