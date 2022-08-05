@@ -992,7 +992,7 @@ proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
    return [list $refx $refy $refz $Gmin]
 }
 
-proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 ntot ini end ene_ini ene_end} {
+proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 out_netw ntot ini end ene_ini ene_end} {
 
    global grilla
    global connect_list
@@ -1128,7 +1128,8 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
    lappend min_list_x $indx_ini_x
    lappend min_list_y $indx_ini_y
    lappend min_list_z $indx_ini_z
-   lappend Gmin_list  9.0
+   #lappend Gmin_list  9.0
+   lappend Gmin_list  $ene_ini
    for { set pnt1 0 } { $pnt1 < $band_length } { incr pnt1 } {
       set ref_indx_x [lindex $ini_path_x $pnt1]
       set ref_indx_y [lindex $ini_path_y $pnt1]
@@ -1142,7 +1143,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
    lappend min_list_x $indx_end_x
    lappend min_list_y $indx_end_y
    lappend min_list_z $indx_end_z
-   lappend Gmin_list  9.0
+   lappend Gmin_list  $ene_end
 
 ############################################################################
 #  PRINT RESULTS
@@ -1165,7 +1166,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
       print_pdb $out_fh2 $xOrigen $yOrigen $zOrigen $x $y $z $xdelta $ydelta $zdelta 1.0 $i 1
    }
 #   close $out_fh2
-   set enefh [open "energy_profile_${ini}_${end}.pdb" w]
+   set enefh [open "energy_profile_${ini}_${end}.dat" w]
    set fmt "ATOM  %5d  N   MIN %5d    %8.3f%8.3f%8.3f %5.2f  0.00"
    set fmtene "%5d %5d  %8.3f"
    set fmtcon "CONECT  %4d %4d %4d %4d "
@@ -1185,6 +1186,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
          puts $enefh [ format $fmtene $ini $end $Gmin ]
       }
 
+      # Add points to conectivity list.
       if { $i == 0 } {
          lappend connect_list [list [expr $index + 1]]
       } elseif { $i == [expr [llength $min_list_x] - 1] } {
@@ -1194,6 +1196,37 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
       }
    }
    close $enefh
+
+   # Computing transition state energies, activation energies, 
+   # kinetic constants and equilibrium constants.
+
+   # Transition state energy
+   puts "LIST OF PATHWAY ENERGIES"
+   puts $Gmin_list
+   set Gts [tcl::mathfunc::max {*}$Gmin_list] 
+   puts "TRANSITION STATE ENERGY"
+   puts $Gts
+
+   # Activation energies
+   set Gact1 [ expr {$Gts - $ene_ini} ]
+   set Gact2 [ expr {$Gts - $ene_end} ]
+
+   # Equilibrium constants
+   set Keq1 [ expr {exp(-( $ene_end - $ene_ini )) } ]
+   set Keq2 [ expr {exp(-( $ene_ini - $ene_end )) } ]
+
+   # Kinetic constants at T = 283K, 298K and 323K
+   set k1_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact1) } ]
+   set k1_298 [ expr { 2.087e10 * 298.0 * exp(-$Gact1) } ]
+   set k1_323 [ expr { 2.087e10 * 323.0 * exp(-$Gact1) } ]
+
+   set k2_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact2) } ]
+   set k2_298 [ expr { 2.087e10 * 298.0 * exp(-$Gact2) } ]
+   set k2_323 [ expr { 2.087e10 * 323.0 * exp(-$Gact2) } ]
+
+   ## FORMAT index1 index2 G1 G2 G= Gact1 Gact2 K1 K2 k1_283 k1_298 k1_323 k2_283 k2_298 k2_323
+   set fmtnetw "%5d %5d  %8.3f %8.3f %8.3f %8.3f %8.3f %.3e %.3e %.3e %.3e %.3e %.3e %.3e %.3e "
+   puts $out_netw [ format $fmtnetw $ini $end $ene_ini $ene_end $Gts $Gact1 $Gact2 $Keq1 $Keq2 $k1_283 $k1_298 $k1_323 $k2_283 $k2_298 $k2_323]
    return [llength $min_list_x]
 
 
@@ -1230,9 +1263,13 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
    set out_fh1 [open "wat_kde_borders.pdb" w]
    set out_fh2 [open "wat_kde_initial_path.pdb" w]
    set out_fh3 [open $pathway_file w]
+   set out_netw [open "network.dat" w]
+   puts $out_netw "index1 index2 G1 G2 G= Gact1 Gact2 K1 K2 k1_283 k1_298 k1_323 k2_283 k2_298 k2_323"
+
    set cnt 1
    set ntot 0
    set connect_list [list ]
+   set cnt 1
 
    foreach a $start_indx_list {
       puts "STARTING NEB ANALYSIS No $cnt/[llength $start_indx_list]"
@@ -1253,7 +1290,7 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
       set npnts [ grid_NEB $pos1x $pos1y $pos1z  $pos2x $pos2y $pos2z \
                            $xOrigen $yOrigen $zOrigen \
                            $xdelta $ydelta $zdelta \
-                           $out_fh3 $out_fh2 $out_fh1 \
+                           $out_fh3 $out_fh2 $out_fh1 $out_netw\
                            $ntot $ini $end $ene_ini $ene_end ]
       set ntot [expr { $ntot + $npnts } ]
       set cnt [expr $cnt + 1]
@@ -1262,6 +1299,7 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
    close $out_fh3
    close $out_fh2
    close $out_fh1
+   close $out_netw
 }
 
 proc kde_analysis_preparation { selection batch max_frames top traj output do_build_input } {
