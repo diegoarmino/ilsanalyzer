@@ -1373,7 +1373,7 @@ proc kde_analysis_preparation { selection batch max_frames top traj output do_bu
    exec  sed -i /END/d $output
    exec  sed -i /CRYST/d $output
 
-   mol load pdb $output
+   mol new $output autobonds off
    set selmm [ atomselect top "all" ]
    set minmax [ measure minmax $selmm ]
 
