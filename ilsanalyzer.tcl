@@ -992,7 +992,7 @@ proc NEB_optimizer {ref_indx_x ref_indx_y ref_indx_z \
    return [list $refx $refy $refz $Gmin]
 }
 
-proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 out_netw ntot ini end ene_ini ene_end} {
+proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelta ydelta zdelta out_fh3 out_fh2 out_fh1 out_netw out_kmodel ntot ini end ene_ini ene_end} {
 
    global grilla
    global connect_list
@@ -1216,17 +1216,25 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
    set Keq2 [ expr {exp(-( $ene_ini - $ene_end )) } ]
 
    # Kinetic constants at T = 283K, 298K and 323K
-   set k1_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact1) } ]
+   # DEBUG
+#   set k1_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact1) } ]
+   set k1_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact1/0.562102) } ]
    set k1_298 [ expr { 2.087e10 * 298.0 * exp(-$Gact1) } ]
    set k1_323 [ expr { 2.087e10 * 323.0 * exp(-$Gact1) } ]
 
-   set k2_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact2) } ]
+   # DEBUG
+   #set k2_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact2) } ]
+   set k2_283 [ expr { 2.087e10 * 283.0 * exp(-$Gact2/0.562102) } ]
    set k2_298 [ expr { 2.087e10 * 298.0 * exp(-$Gact2) } ]
    set k2_323 [ expr { 2.087e10 * 323.0 * exp(-$Gact2) } ]
 
    ## FORMAT index1 index2 G1 G2 G= Gact1 Gact2 K1 K2 k1_283 k1_298 k1_323 k2_283 k2_298 k2_323
    set fmtnetw "%5d %5d  %8.3f %8.3f %8.3f %8.3f %8.3f %.3e %.3e %.3e %.3e %.3e %.3e %.3e %.3e "
+   set fmtkmodel "c_%s -> c_%s; k_%s * c_%s - k_%s * c_%s; k_%s = %.3e; k_%s = %.3e;"
    puts $out_netw [ format $fmtnetw $ini $end $ene_ini $ene_end $Gts $Gact1 $Gact2 $Keq1 $Keq2 $k1_283 $k1_298 $k1_323 $k2_283 $k2_298 $k2_323]
+
+   # Printing Tellurium-compatible Kinnetic Model
+   puts $out_kmodel [ format $fmtkmodel $ini $end "${ini}_${end}" $ini "${end}_${ini}" $end "${ini}_${end}" $k1_283 "${end}_${ini}" $k2_283] 
    return [llength $min_list_x]
 
 
@@ -1236,7 +1244,7 @@ proc grid_NEB {pos1x pos1y pos1z pos2x pos2y pos2z xOrigen yOrigen zOrigen xdelt
 
 }
 
-proc search_pathways { start_indx_list opt_file pathway_file } {
+proc search_pathways { start_indx_list opt_file pathway_file external_indx_list} {
 # MAIN PROCEDURE TO SEARCH FOR PATHWAYS BETWEEN MINIMA.
 # USE THIS PROCEDURE AS A COMMAND.
 
@@ -1264,17 +1272,21 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
    set out_fh2 [open "wat_kde_initial_path.pdb" w]
    set out_fh3 [open $pathway_file w]
    set out_netw [open "network.dat" w]
+   set out_kmodel [open "kinetic-model.tellurium" w]
    puts $out_netw "index1 index2 G1 G2 G= Gact1 Gact2 K1 K2 k1_283 k1_298 k1_323 k2_283 k2_298 k2_323"
 
    set cnt 1
    set ntot 0
    set connect_list [list ]
    set cnt 1
+   set c_list [list ]
 
    foreach a $start_indx_list {
       puts "STARTING NEB ANALYSIS No $cnt/[llength $start_indx_list]"
       set ini [lindex $a 0]
       set end [lindex $a 1]
+      lappend c_list $ini
+      lappend c_list $end
       set sel_ini [ atomselect top "index $ini" ]
       set sel_end [ atomselect top "index $end" ]
       set ene_ini [ $sel_ini get occupancy ]
@@ -1290,16 +1302,32 @@ proc search_pathways { start_indx_list opt_file pathway_file } {
       set npnts [ grid_NEB $pos1x $pos1y $pos1z  $pos2x $pos2y $pos2z \
                            $xOrigen $yOrigen $zOrigen \
                            $xdelta $ydelta $zdelta \
-                           $out_fh3 $out_fh2 $out_fh1 $out_netw\
+                           $out_fh3 $out_fh2 $out_fh1 $out_netw $out_kmodel\
                            $ntot $ini $end $ene_ini $ene_end ]
       set ntot [expr { $ntot + $npnts } ]
       set cnt [expr $cnt + 1]
+   }
+   # Print external terms to kinetic model
+   set fmtkmodel "c_%s -> CO + Hb; k_off * c_%s - k_on * CO * Hb;"
+   foreach ex $external_indx_list {
+	   puts $out_kmodel [format $fmtkmodel $ex $ex]
+   }
+   puts $out_kmodel ""
+   puts $out_kmodel "k_on = 2.5e5; k_off = 1e10"
+   puts $out_kmodel ""
+
+   # Print initial concentrations to kinetic model
+   set unique_c_list [lsort -unique $c_list]
+   puts $unique_c_list
+   foreach b $unique_c_list {
+	   puts $out_kmodel [format "c_%s = %s" $b "0.0"]
    }
 
    close $out_fh3
    close $out_fh2
    close $out_fh1
    close $out_netw
+   close $out_kmodel
 }
 
 proc kde_analysis_preparation { selection batch max_frames top traj output do_build_input } {
